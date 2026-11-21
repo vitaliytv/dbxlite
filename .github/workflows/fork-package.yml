@@ -1,0 +1,44 @@
+name: Fork package
+
+on:
+  push:
+    branches: ['fork/combined-tgz']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v2
+        with:
+          version: 11
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Test changes
+        run: >-
+          pnpm -C apps/web-client exec vitest run
+          ../../packages/connectors/src/__tests__/duckdb-http-readers.test.ts
+          ../../packages/connectors/src/__tests__/duckdb-http-queue.test.ts
+          src/hooks/__tests__/useServerDatabases.vitest.ts
+          src/components/__tests__/UnifiedTreeView.descriptions.vitest.tsx
+      - name: Build web client and package
+        run: |
+          pnpm --filter web-client build
+          pnpm --filter dbxlite-ui build
+          mkdir -p "$RUNNER_TEMP/dbxlite-package"
+          npm pack --ignore-scripts --pack-destination "$RUNNER_TEMP/dbxlite-package" --workspace apps/cli
+          cd "$RUNNER_TEMP/dbxlite-package"
+          sha256sum *.tgz > SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dbxlite-fork-package
+          path: ${{ runner.temp }}/dbxlite-package/*
+          if-no-files-found: error
